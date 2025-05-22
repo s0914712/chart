@@ -1,0 +1,562 @@
+import React, { useState, useEffect } from 'react';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
+} from 'recharts';
+
+const strategies = {
+  War: "War in Asia, RUS-UKRAINE, ISRAEL-IRAN",
+  Debt: "Economic Pressure and Debt",
+  Deglobalization: "Deglobalization/Nuclear Proliferation",
+  AI_Trend: "AI Trend",
+  Climate_Change: "Climate Change",
+  Financial: "New Financial Forum"
+};
+
+const baseProbabilities = {
+  War: 0.4,
+  Debt: 0.2,
+  Deglobalization: 0.3,
+  AI_Trend: 0.5,
+  Climate_Change: 0.7,
+  Financial: 0.6
+};
+
+const initialKdeData = [
+  { x: -100, War: 0.005, Debt: 0.006, Deglobalization: 0.004, AI_Trend: 0.001, Climate_Change: 0.0005, Financial: 0.0005 },
+  { x: -75, War: 0.008, Debt: 0.009, Deglobalization: 0.006, AI_Trend: 0.002, Climate_Change: 0.001, Financial: 0.001 },
+  { x: -50, War: 0.015, Debt: 0.015, Deglobalization: 0.01, AI_Trend: 0.005, Climate_Change: 0.002, Financial: 0.002 },
+  { x: -25, War: 0.01, Debt: 0.01, Deglobalization: 0.015, AI_Trend: 0.015, Climate_Change: 0.005, Financial: 0.006 },
+  { x: 0, War: 0.005, Debt: 0.005, Deglobalization: 0.01, AI_Trend: 0.028, Climate_Change: 0.015, Financial: 0.015 },
+  { x: 25, War: 0.002, Debt: 0.002, Deglobalization: 0.008, AI_Trend: 0.03, Climate_Change: 0.03, Financial: 0.03 },
+  { x: 50, War: 0.001, Debt: 0.001, Deglobalization: 0.004, AI_Trend: 0.025, Climate_Change: 0.035, Financial: 0.033 },
+  { x: 75, War: 0.0005, Debt: 0.0005, Deglobalization: 0.002, AI_Trend: 0.01, Climate_Change: 0.04, Financial: 0.035 },
+  { x: 100, War: 0.0002, Debt: 0.0002, Deglobalization: 0.001, AI_Trend: 0.005, Climate_Change: 0.02, Financial: 0.015 }
+];
+
+const strategySummaries = {
+  War: "War in Asia, RUS-UKRAINE, ISRAEL-IRAN: Focuses on military conflicts and geopolitical tensions, with high risk of escalation and global instability.",
+  Debt: "Economic Pressure and Debt: Emphasizes economic strategies to manage debt burdens, potentially leading to financial instability or recovery.",
+  Deglobalization: "Deglobalization/Nuclear Proliferation: Addresses retreat from global cooperation and nuclear proliferation risks.",
+  AI_Trend: "AI Trend: Leverages AI advancements for economic and strategic outcomes, with potential for innovation but risks of disruption.",
+  Climate_Change: "Climate Change: Prioritizes environmental sustainability and adaptation, with long-term benefits but immediate costs.",
+  Financial: "New Financial Forum: Establishes new financial frameworks for global economic stability, with cooperation challenges."
+};
+
+const initialSensitivityData = {
+  War: [
+    { name: "Geopolitical Stability", positive: 5, negative: -30 },
+    { name: "Economic Conditions", positive: 10, negative: -20 },
+    { name: "Military Spending", positive: 15, negative: -25 },
+    { name: "International Alliances", positive: 20, negative: -15 },
+    { name: "Nuclear Risk", positive: 0, negative: -35 }
+  ],
+  Debt: [
+    { name: "Geopolitical Stability", positive: 5, negative: -15 },
+    { name: "Economic Conditions", positive: 20, negative: -30 },
+    { name: "Debt Levels", positive: 10, negative: -25 },
+    { name: "Interest Rates", positive: 5, negative: -20 },
+    { name: "Fiscal Policy", positive: 15, negative: -10 }
+  ],
+  Deglobalization: [
+    { name: "Geopolitical Stability", positive: 10, negative: -25 },
+    { name: "Economic Conditions", positive: 5, negative: -20 },
+    { name: "Trade Barriers", positive: 15, negative: -15 },
+    { name: "Nuclear Proliferation", positive: 0, negative: -30 },
+    { name: "Nationalism Trends", positive: 10, negative: -10 }
+  ],
+  AI_Trend: [
+    { name: "Technological Advancement", positive: 30, negative: -5 },
+    { name: "Economic Conditions", positive: 20, negative: -10 },
+    { name: "Regulatory Framework", positive: 15, negative: -15 },
+    { name: "Cybersecurity Risks", positive: 5, negative: -25 },
+    { name: "Workforce Adaptation", positive: 10, negative: -10 }
+  ],
+  Climate_Change: [
+    { name: "Environmental Impact", positive: 35, negative: -5 },
+    { name: "Economic Conditions", positive: 15, negative: -20 },
+    { name: "Policy Adoption", positive: 25, negative: -10 },
+    { name: "Natural Disasters", positive: 0, negative: -30 },
+    { name: "International Cooperation", positive: 20, negative: -10 }
+  ],
+  Financial: [
+    { name: "Economic Conditions", positive: 25, negative: -15 },
+    { name: "Regulatory Framework", positive: 20, negative: -10 },
+    { name: "Market Stability", positive: 15, negative: -20 },
+    { name: "Global Cooperation", positive: 20, negative: -10 },
+    { name: "Financial Innovation", positive: 10, negative: -5 }
+  ]
+};
+
+const initialStrategyStats = {
+  War: { median: -50, mean: -50 },
+  Debt: { median: -60, mean: -58 },
+  Deglobalization: { median: -30, mean: -28 },
+  AI_Trend: { median: 0, mean: 2 },
+  Climate_Change: { median: 70, mean: 18 },
+  Financial: { median: 70, mean: 40 }
+};
+
+const runMonteCarloSimulation = (strategy, numRuns, variability, shockProbability, distribution) => {
+  let baseProbability = baseProbabilities[strategy];
+  let results = [];
+  for (let i = 0; i < numRuns; i++) {
+    let variance = baseProbability * (variability / 100);
+    let adjustedBase;
+    if (distribution === "normal") {
+      let u1 = Math.random();
+      let u2 = Math.random();
+      let z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+      adjustedBase = baseProbability + variance * z;
+    } else if (distribution === "uniform") {
+      adjustedBase = baseProbability + variance * (Math.random() * 2 - 1);
+    } else if (distribution === "triangular") {
+      let r = Math.random();
+      if (r <= 0.5) {
+        adjustedBase = baseProbability - variance + Math.sqrt(2 * variance * variance * r);
+      } else {
+        adjustedBase = baseProbability + variance - Math.sqrt(2 * variance * variance * (1 - r));
+      }
+    } else if (distribution === "lognormal") {
+      let u1 = Math.random();
+      let u2 = Math.random();
+      let z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+      adjustedBase = baseProbability * Math.exp(variance * z / baseProbability);
+    } else {
+      adjustedBase = baseProbability;
+    }
+    let shockImpact = 0;
+    if (Math.random() < (shockProbability / 100)) {
+      if (strategy === 'War') shockImpact = 0.35;
+      else if (strategy === 'Debt') shockImpact = 0.3;
+      else if (strategy === 'Deglobalization') shockImpact = 0.25;
+      else if (strategy === 'AI_Trend') shockImpact = 0.15;
+      else if (strategy === 'Climate_Change') shockImpact = 0.1;
+      else if (strategy === 'Financial') shockImpact = 0.2;
+      shockImpact *= (0.5 + Math.random());
+    }
+    let finalProbability = Math.max(0, Math.min(1, adjustedBase * (1 - shockImpact)));
+    let payoff = (finalProbability - 0.5) * 200;
+    results.push(payoff);
+  }
+  return results;
+};
+
+const kernelDensityEstimation = (data, bandwidth = 10) => {
+  const xValues = [];
+  for (let x = -100; x <= 100; x += 5) {
+    xValues.push(x);
+  }
+  const gaussian = (x) => Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+  const kdePoints = [];
+  for (const x of xValues) {
+    let density = 0;
+    for (const dataPoint of data) {
+      const z = (x - dataPoint) / bandwidth;
+      density += gaussian(z);
+    }
+    density /= (data.length * bandwidth);
+    kdePoints.push({ x, density });
+  }
+  return kdePoints;
+};
+
+const calculateStats = (results) => {
+  if (!results || results.length === 0) return { median: 0, mean: 0 };
+  const sorted = [...results].sort((a, b) => a - b);
+  return {
+    median: sorted[Math.floor(sorted.length / 2)],
+    mean: sorted.reduce((a, b) => a + b, 0) / sorted.length
+  };
+};
+
+const mergeKdeData = (kdeData) => {
+  const allX = new Set();
+  Object.keys(kdeData).forEach(strategy => {
+    kdeData[strategy].forEach(point => {
+      allX.add(point.x);
+    });
+  });
+  const sortedX = Array.from(allX).sort((a, b) => a - b);
+  return sortedX.map(x => {
+    const point = { x };
+    Object.keys(kdeData).forEach(strategy => {
+      const match = kdeData[strategy].find(p => p.x === x);
+      point[strategy] = match ? match.density : 0;
+    });
+    return point;
+  });
+};
+
+const generateSensitivityData = (strategy, variability, shockProbability) => {
+  const baseData = [...initialSensitivityData[strategy]];
+  return baseData.map(item => {
+    const variabilityFactor = 1 + ((variability - 7.5) / 100);
+    const shockFactor = 1 + ((shockProbability - 30) / 200);
+    return {
+      name: item.name,
+      positive: Math.round(item.positive * variabilityFactor * 10) / 10,
+      negative: Math.round(item.negative * shockFactor * 10) / 10
+    };
+  }).sort((a, b) => {
+    const magnitudeA = Math.abs(a.positive) + Math.abs(a.negative);
+    const magnitudeB = Math.abs(b.positive) + Math.abs(b.negative);
+    return magnitudeB - magnitudeA;
+  });
+};
+
+function InteractiveDashboard() {
+  const [numRuns, setNumRuns] = useState(1000);
+  const [variability, setVariability] = useState(10);
+  const [shockProbability, setShockProbability] = useState(30);
+  const [distribution, setDistribution] = useState("normal");
+  const [bandwidth, setBandwidth] = useState(10);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [kdeData, setKdeData] = useState({});
+  const [mergedData, setMergedData] = useState(initialKdeData);
+  const [strategyStats, setStrategyStats] = useState(initialStrategyStats);
+  const [rankedStrategies, setRankedStrategies] = useState([]);
+  const [selectedStrategy, setSelectedStrategy] = useState('Climate_Change');
+  const [sensitivityData, setSensitivityData] = useState(initialSensitivityData.Climate_Change);
+
+  const strategyColors = {
+    War: "#D62728",
+    Debt: "#FF7F0E",
+    Deglobalization: "#9467BD",
+    AI_Trend: "#2CA02C",
+    Climate_Change: "#1F77B4",
+    Financial: "#000000"
+  };
+
+  const formatValue = (value) => {
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toFixed(1)}`;
+  };
+
+  const payoffToProb = (payoff) => (payoff / 200) + 0.5;
+
+  const formatPercent = (value) => `${(payoffToProb(value) * 100).toFixed(1)}%`;
+
+  const runSimulation = () => {
+    setIsSimulating(true);
+    setTimeout(() => {
+      try {
+        const allResults = {};
+        const allKde = {};
+        Object.keys(strategies).forEach(strategy => {
+          const results = runMonteCarloSimulation(
+            strategy, numRuns, variability, shockProbability, distribution
+          );
+          const kde = kernelDensityEstimation(results, bandwidth);
+          allResults[strategy] = results;
+          allKde[strategy] = kde;
+        });
+        const stats = {};
+        Object.keys(allResults).forEach(strategy => {
+          stats[strategy] = calculateStats(allResults[strategy]);
+        });
+        const merged = mergeKdeData(allKde);
+        const ranked = Object.keys(strategies)
+          .sort((a, b) => stats[b].median - stats[a].median)
+          .map(strategy => ({
+            id: strategy,
+            name: strategies[strategy],
+            median: stats[strategy].median,
+            basePayoff: (baseProbabilities[strategy] - 0.5) * 200,
+            summary: strategySummaries[strategy]
+          }));
+        const newSensitivityData = generateSensitivityData(
+          selectedStrategy, variability, shockProbability
+        );
+        setKdeData(allKde);
+        setMergedData(merged);
+        setStrategyStats(stats);
+        setRankedStrategies(ranked);
+        setSensitivityData(newSensitivityData);
+      } catch (error) {
+        console.error("Simulation error:", error);
+      } finally {
+        setIsSimulating(false);
+      }
+    }, 100);
+  };
+
+  useEffect(() => {
+    setSensitivityData(generateSensitivityData(
+      selectedStrategy, variability, shockProbability
+    ));
+  }, [selectedStrategy]);
+
+  useEffect(() => {
+    const initialRanked = Object.keys(strategies)
+      .sort((a, b) => initialStrategyStats[b].median - initialStrategyStats[a].median)
+      .map(strategy => ({
+        id: strategy,
+        name: strategies[strategy],
+        median: initialStrategyStats[strategy].median,
+        basePayoff: (baseProbabilities[strategy] - 0.5) * 200,
+        summary: strategySummaries[strategy]
+      }));
+    setRankedStrategies(initialRanked);
+    runSimulation();
+  }, []);
+
+  return (
+    <div className="p-4 bg-gray-50 min-h-screen">
+      <h1 className="text-2xl font-bold mb-4 text-center">Global Strategic Trends Analysis</h1>
+      <div className="bg-white p-4 rounded shadow-md mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Monte Carlo Runs</label>
+            <input 
+              type="range" 
+              min="100" 
+              max="10000" 
+              step="100"
+              value={numRuns} 
+              onChange={(e) => setNumRuns(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-sm text-gray-500 mt-1">{numRuns} runs</div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Variability</label>
+            <input 
+              type="range" 
+              min="0" 
+              max="15" 
+              step="0.5"
+              value={variability} 
+              onChange={(e) => setVariability(parseFloat(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-sm text-gray-500 mt-1">{variability}%</div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Shock Probability</label>
+            <input 
+              type="range" 
+              min="0" 
+              max="90" 
+              step="1"
+              value={shockProbability} 
+              onChange={(e) => setShockProbability(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-sm text-gray-500 mt-1">{shockProbability}%</div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Distribution Type</label>
+            <select 
+              value={distribution}
+              onChange={(e) => setDistribution(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="normal">Normal</option>
+              <option value="uniform">Uniform</option>
+              <option value="triangular">Triangular</option>
+              <option value="lognormal">Log-normal</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Bandwidth (Smoothing)</label>
+            <input 
+              type="range" 
+              min="1" 
+              max="25" 
+              step="1"
+              value={bandwidth} 
+              onChange={(e) => setBandwidth(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-sm text-gray-500 mt-1">{bandwidth}</div>
+          </div>
+        </div>
+        <button 
+          onClick={runSimulation}
+          disabled={isSimulating}
+          className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+        >
+          {isSimulating ? "Simulating..." : "Run Simulation"}
+        </button>
+      </div>
+      {isSimulating ? (
+        <div className="text-center py-20">
+          <div className="text-xl">Running simulations...</div>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white p-4 rounded shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-2">Kernel Density of Strategic Outcomes (20 Years)</h2>
+            <div className="text-sm text-gray-600 mb-4">
+              This plot shows the distribution of possible strategic payoffs for each approach. Higher values represent better outcomes.
+              The vertical red dashed line represents the neutral point (0). Density peaks indicate more likely outcomes.
+            </div>
+            <ResponsiveContainer width="100%" height={500}>
+              <LineChart 
+                data={mergedData}
+                margin={{ top: 20, right: 30, left: 25, bottom: 30 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="x" 
+                  type="number"
+                  domain={[-100, 100]} 
+                  ticks={[-100, -75, -50, -25, 0, 25, 50, 75, 100]}
+                  tickFormatter={formatValue}
+                  label={{ 
+                    value: 'Total Strategic Payoff', 
+                    position: 'insideBottom', 
+                    offset: -10,
+                    style: { fontSize: 14 }
+                  }}
+                  tick={{ fontSize: 14 }}
+                />
+                <YAxis 
+                  label={{ 
+                    value: 'Density', 
+                    angle: -90, 
+                    position: 'insideLeft',
+                    offset: -15,
+                    style: { fontSize: 14 }
+                  }}
+                  tick={{ fontSize: 14 }}
+                />
+                <Tooltip 
+                  formatter={(value, name) => [value.toFixed(4), strategies[name]]}
+                  labelFormatter={(label) => `Payoff: ${formatValue(label)} (${formatPercent(label)})`}
+                />
+                <Legend 
+                  verticalAlign="bottom" 
+                  align="center"
+                  wrapperStyle={{ 
+                    paddingTop: "20px", 
+                    marginTop: "20px", 
+                    borderTop: "1px solid #eee" 
+                  }}
+                />
+                <ReferenceLine 
+                  x={0} 
+                  stroke="red" 
+                  strokeDasharray="5 5" 
+                  label={{ 
+                    value: 'Neutral', 
+                    position: 'top', 
+                    fill: 'red', 
+                    fontSize: 12 
+                  }}
+                />
+                {Object.keys(strategies).map(strategy => (
+                  <Line 
+                    key={strategy}
+                    type="monotone" 
+                    dataKey={strategy} 
+                    name={strategies[strategy]} 
+                    stroke={strategyColors[strategy]}
+                    strokeWidth={strategy === 'Climate_Change' ? 3 : 2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-white p-4 rounded shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4">Strategy Rankings</h2>
+            <div className="space-y-4">
+              {rankedStrategies.map((strategy, index) => (
+                <div key={strategy.id} className="border-b pb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="text-2xl font-bold">{index + 1}</div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold" style={{ color: strategyColors[strategy.id] }}>
+                        {strategy.name}
+                      </h3>
+                      <div className="text-sm">{strategy.summary}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold">{formatValue(strategy.median)}</div>
+                      <div className="text-sm text-gray-500">Base: {formatValue(strategy.basePayoff)}</div>
+                      <div className="text-sm">{formatPercent(strategy.median)} Success</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4">Sensitivity Analysis: Variables Impacting Strategic Payoffs</h2>
+            <div className="text-sm text-gray-600 mb-4">
+              This tornado chart shows which variables have the greatest impact on strategic outcomes. 
+              Longer bars indicate variables with more influence on the final result.
+            </div>
+            <div className="flex items-center mb-4">
+              <label className="mr-2 font-medium">Strategy:</label>
+              <select 
+                className="p-2 border rounded"
+                value={selectedStrategy}
+                onChange={(e) => setSelectedStrategy(e.target.value)}
+              >
+                {Object.keys(strategies).map(strategy => (
+                  <option key={strategy} value={strategy}>{strategies[strategy]}</option>
+                ))}
+              </select>
+            </div>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart
+                layout="vertical"
+                data={sensitivityData.map(item => ({
+                  name: item.name,
+                  impact: Math.abs(item.positive) + Math.abs(item.negative)
+                }))}
+                margin={{ top: 20, right: 30, left: 170, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 50]}
+                  tickFormatter={value => `${value}%`}
+                  label={{ 
+                    value: 'Total Impact Magnitude on Strategic Payoff (%)', 
+                    position: 'insideBottom', 
+                    offset: -5,
+                    style: { fontSize: 14 }
+                  }}
+                />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  tick={{ fontSize: 14 }}
+                  width={170}
+                />
+                <Tooltip 
+                  formatter={(value) => `${value}%`}
+                  labelFormatter={(label) => `Variable: ${label}`}
+                />
+                <Bar dataKey="impact" fill="#4682B4" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-white p-4 rounded shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Mathematical Model Overview</h2>
+            <div className="space-y-2 text-sm">
+              <p><strong>Strategic Payoff Scale:</strong> -100 to +100, where 0 is neutral, positive values represent strategic success</p>
+              <p><strong>Base Formula:</strong> Success Probability = Base × (1 - Risk Impact) × (1 + Influence Impact)</p>
+              <p><strong>Risk Impact:</strong> Calculated based on risk sensitivity coefficients, probability of occurrence, and impact severity</p>
+              <p><strong>Influence Impact:</strong> Calculated from influence matrix values weighted by factor importance</p>
+              <p><strong>Monte Carlo Parameters:</strong></p>
+              <ul className="pl-5 list-disc">
+                <li>Monte Carlo Runs: Number of simulations to run (higher = more stable results)</li>
+                <li>Variability: Amount of random variation applied to base probabilities (%)</li>
+                <li>Shock Probability: Likelihood of unexpected negative events occurring (%)</li>
+                <li>Distribution Type: Statistical distribution used to model uncertainty</li>
+                <li>Bandwidth: Controls smoothness of density curves (higher = smoother)</li>
+              </ul>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default InteractiveDashboard;
